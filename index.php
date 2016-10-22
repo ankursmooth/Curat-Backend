@@ -108,9 +108,12 @@ $app->add(new \Slim\Middleware\HttpBasicAuth($authA, array(
  * Slim application routes
  */
 
-$app->post('/loginDoctor', function(){ });
+$app->post('/loginDoctor', function(){ 
+
+
+});
 $app->post('/loginOrganization', function(){ });
-$app->post('/forgotDoctor', function(){ $login = new \Login(); $login->forgotPhotographer();});
+
 
 
 $app->group('/patient',function () use ($app){
@@ -118,57 +121,8 @@ $app->group('/patient',function () use ($app){
 	global $authP; 
 	
 	
-	$app->post('/getPatient', function(){
-		$app = \Slim\Slim::getInstance();
-    	$response=array();
-    	$allPostVars = $app->request->post();
-    	array_walk_recursive($allPostVars, function (&$val) 
-		{ 
-		    $val = trim($val); 
-		});
-		$check_array = array('qrstring');
-		$check_diff=array_diff($check_array, array_keys($allPostVars));
-		if ($check_diff){
-		    $response["status"]=400;
-		    $notPresent= implode(", ", $check_diff);
-		    $response["message"]= $notPresent." not set";
-		    echo json_encode($response);
-		    return;
-		}
-		$sql = "SELECT * from patient where UserId =:qrstring";
-	    $dbdata=null;
-	    try {
-		    $db = getDB();
-		    $stmt = $db->prepare($sql);
-		    $result=$stmt->execute($allPostVars);
-			
-			if($result){
-				$response["status"]=200;
-				$response["message"]="correct qr string";
-				if($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-					foreach ($row as $key => $value) {
-		            	# code...
-		            	$response[$key]=$value;
-		            }
-		            unset($response["UserId"]);
-		            unset($response["Code"]);
-				}
-				else{
-					$response["status"]=400;
-					$response["message"]="incorrect qr string";
-				}
-				echo json_encode($response);
-			}
-			$db = null;
-		}
-		catch(PDOException $e) {
-	        $response["status"]=501;
-	        $response["message"]="Server Database Error ".$e->getMessage();
-	        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
-	        //$
-	        echo json_encode($response);
-	    }
-	});
+	$app->post('/getPatient', 'getPatient');
+	$app->post('/getHistory', 'getHistory');
 	
 });
 
@@ -181,10 +135,8 @@ $app->group('/doctor',function () use ($app){
     
 	});
 	
-	$app->post('/history',function(){
-			});
-	$app->post('/detailhistory',function(){
-		});
+	$app->post('/getHistory','getHistory');
+//	$app->post('/detailHistory','detailHistory');
 	$app->post('/getattachment',function(){
 		});
 	$app->post('/visit',function(){
@@ -193,17 +145,122 @@ $app->group('/doctor',function () use ($app){
 			});
 	});
 $app->group('/organization',function () use ($app){
-	
+	$app->post('/getPatient', 'getPatient');
+	$app->post('/getHistory', 'getHistory');
 } );
 
 $app->notFound(function () use ($app) {
     $app->redirect('http://www.lnmhacks.pe.hu/notfound.html');
 });
 
+function getHistory(){
+	$app = \Slim\Slim::getInstance();
+	$response=array();
+	$allPostVars = $app->request->post();
+	array_walk_recursive($allPostVars, function (&$val) 
+	{ 
+	    $val = trim($val); 
+	});
+	$check_array = array('qrstring');
+	$check_diff=array_diff($check_array, array_keys($allPostVars));
+	if ($check_diff){
+	    $response["status"]=400;
+	    $notPresent= implode(", ", $check_diff);
+	    $response["message"]= $notPresent." not set";
+	    echo json_encode($response);
+	    return;
+	}
+	$sql = "SELECT * from patienthistory where UserId =:qrstring";
+    $dbdata=null;
+    try {
+	    $db = getDB();
+	    $stmt = $db->prepare($sql);
+	    $result=$stmt->execute($allPostVars);
+		
+		if($result){
+			
+			$response["chat"]=array();
+		    $response["number"]=0;
+			while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+				$response["number"]=$response["number"]+1;
+				unset($row['Attachments']);
+				unset($row['Details']);
+				unset($row['UserId']);
+	            array_push($response["chat"], $row);
+			}
+	        $response["status"]=200;
+	        $response["message"]="All Visits";
+	       	
+	       	if($response["number"]==0){
+	       		$response["message"]="No Visits";
+	       	}
+	       	$db = null;
+	        echo json_encode($response);
+			
+		}
+		$db = null;
+	}
+	catch(PDOException $e) {
+        $response["status"]=501;
+        $response["message"]="Server Database Error ".$e->getMessage();
+        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+        //$
+        echo json_encode($response);
+    }
+}
 
 
-
-
+function getPatient(){
+	$app = \Slim\Slim::getInstance();
+	$response=array();
+	$allPostVars = $app->request->post();
+	array_walk_recursive($allPostVars, function (&$val) 
+	{ 
+	    $val = trim($val); 
+	});
+	$check_array = array('qrstring');
+	$check_diff=array_diff($check_array, array_keys($allPostVars));
+	if ($check_diff){
+	    $response["status"]=400;
+	    $notPresent= implode(", ", $check_diff);
+	    $response["message"]= $notPresent." not set";
+	    echo json_encode($response);
+	    return;
+	}
+	$sql = "SELECT * from patient where UserId =:qrstring";
+    $dbdata=null;
+    try {
+	    $db = getDB();
+	    $stmt = $db->prepare($sql);
+	    $result=$stmt->execute($allPostVars);
+		
+		if($result){
+			$response["status"]=200;
+			$response["message"]="correct qr string";
+			if($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+				foreach ($row as $key => $value) {
+	            	# code...
+	            	$response[$key]=$value;
+	            }
+	            unset($response["UserId"]);
+	            unset($response["Code"]);
+			}
+			else{
+				$response["status"]=400;
+				$response["message"]="incorrect qr string";
+			}
+			echo json_encode($response);
+		}
+		$db = null;
+	}
+	catch(PDOException $e) {
+        $response["status"]=501;
+        $response["message"]="Server Database Error ".$e->getMessage();
+        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+        //$
+        echo json_encode($response);
+    }
+}
 
 /**
  * Step 4: Run the Slim application
