@@ -270,9 +270,137 @@ $app->group('/doctor',function () use ($app){
 	$app->post('/getattachment',function(){
 		});
 	$app->post('/visit',function(){
-			});
+		global $authC;
+		$app = \Slim\Slim::getInstance();
+		$response=array();
+		$allPostVars = $app->request->post();
+		array_walk_recursive($allPostVars, function (&$val) 
+		{ 
+		    $val = trim($val); 
+		});
+		$check_array = array('patientID','Keypoints', 'Details');
+		$check_diff=array_diff($check_array, array_keys($allPostVars));
+		if ($check_diff){
+		    $response["status"]=400;
+		    $notPresent= implode(", ", $check_diff);
+		    $response["message"]= $notPresent." not set";
+		    echo json_encode($response);
+		    return;
+		}
+		$sql = "SELECT * from patient where UserId =:patientID";
+	    $dbdata=null;
+	    try {
+		    $db = getDB();
+		    $stmt = $db->prepare($sql);
+		    $result=$stmt->execute(array('patientID' => $allPostVars['patientID']));
+			
+			if($result){
+				$result = NULL;
+				$db = getDB();
+				$original = new DateTime("now", new DateTimeZone('UTC')	);
+				$timezoneName = timezone_name_from_abbr("", 5.5*3600, false);
+				$modified = $original->setTimezone(new DateTimezone($timezoneName));
+				
+				$dt = $original->format('Y-m-d H:i:s');
+			    $stmt = $db->prepare("INSERT into patienthistory (`UserId`,`DoctorName`, `Keypoints`, `Details`, `DateTime`) VALUES (:patientID,:DoctorName, :Keypoints, :Details, :dt) ");
+			    $result=$stmt->execute(array('DoctorName' => $authC->userdata->Name, 'patientID' => $allPostVars['patientID'], 'Keypoints' => $allPostVars['Keypoints'], 'Details' => $allPostVars['Details'], 'dt'=> $dt));
+			    if($result){
+			        $response["status"]=200;
+			        $response["message"]="Done";
+			        $response["DateTime"] = $dt;
+		       	}
+		       	else{
+		       		$response["status"]=501;
+			        $response["message"]="Server error";
+		       	}
+		       
+		       	$db = null;
+		        echo json_encode($response);
+				
+			}
+			else{
+				$response["status"]=400;
+			    $response["message"]="invalid patient ID";
+			}
+			$db = null;
+		}
+		catch(PDOException $e) {
+	        $response["status"]=501;
+	        $response["message"]="Server Database Error ".$e->getMessage();
+	        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+	        //$
+	        echo json_encode($response);
+	    }
+	});
 	$app->post('/attachment',function(){
-			});
+		if (!isset($_FILES['image'])) {
+	        $response['status']=400;
+        	$response['message'] = "some parameter not set";
+        	
+        	echo json_encode($response);
+	        return;
+    	}
+		$app = \Slim\Slim::getInstance();
+		$response=array();
+		$allPostVars = $app->request->post();
+		foreach ($allPostVars as $key => $value) {
+			# code...
+			$response[$key] = $value;
+		}
+	    
+	    $imgs = NULL;
+	    //echo "something";
+	    $files = $_FILES['image'];
+	    $patientID = $_POST['patientID'];
+	    $dt = $_POST['DateTime'];
+
+	    $response=array();
+        $uploaded =0;
+        $name = md5($patientID.$dt);
+        
+        if (move_uploaded_file($files['tmp_name'], 'attachments/' . $name.".jpg") === true) {
+            $imgs = array('url' => '/attachments/' . $name.".jpg");
+            $uploaded=1;
+        }
+        if($uploaded==1){
+        	$response['status']=200;
+        	$response['url'] = $imgs['url'];
+        	$response['message'] = "uploaded";
+        	$sql = "UPDATE patienthistory SET `Attachments` =:urlimage , `HasAttachments` =:no where UserId= :patientID and DateTime = :dt";
+        	try {
+			    $db = getDB();
+			    $stmt = $db->prepare($sql);
+			    $result=$stmt->execute(array('patientID' => $patientID, 'dt' => $dt, 'urlimage' => $imgs['url'], 'no'=>'1'));
+				
+				if($result){
+					
+					
+				}
+				else{
+					$response["status"]=400;
+				    $response["message"]="invalid patient ID";
+				    echo json_encode($response);
+				    return;
+				}
+				$db = null;
+			}
+			catch(PDOException $e) {
+		        $response["status"]=501;
+		        $response["message"]="Server Database Error ".$e->getMessage();
+		        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+		        //$
+		        echo json_encode($response);
+		        return;
+		    }	
+        }
+        else{
+        	$response['status']=400;
+        	$response['message'] = " not uploaded";
+        }
+
+		echo json_encode($response);
+	
+		});
 	});
 $app->group('/organization',function () use ($app){
 	$app->post('/getPatient', 'getPatient');
@@ -359,7 +487,7 @@ function detailHistory(){
 	}
 	$sql = "SELECT * from patienthistory where UserId =:patientID and DateTime =:DateTime";
     $dbdata=null;
-    
+
     try {
 	    $db = getDB();
 	    $stmt = $db->prepare($sql);
