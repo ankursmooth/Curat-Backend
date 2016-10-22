@@ -35,8 +35,8 @@ class MyAuthClass implements \Slim\Middleware\AuthCheckerInterface
   //   	if($this->app->request->isOptions())
 		// return true;
 
-    	if($this->usertype=="admin"){
-    		if($username=="admin"&& $password=="admin")
+    	if($this->usertype=="patient"){
+    		if($username=="patient"&& $password=="demouser")
     			return true;
     		return false;
     	}
@@ -49,10 +49,7 @@ class MyAuthClass implements \Slim\Middleware\AuthCheckerInterface
 		    $stmt = $db->prepare($sql);
 		    $stmt->execute(array($username, $password));
 			$dbdata = $stmt->fetchObject();
-			/*
-
-			this dbdata may be simetimes used by other function.. handle with care
-			*/
+			
 			$db = null;
 		}
 		catch(PDOException $e) {
@@ -119,17 +116,66 @@ $app->post('/forgotDoctor', function(){ $login = new \Login(); $login->forgotPho
 $app->group('/patient',function () use ($app){
 	
 	global $authP; 
-	global $patient;
+	
 	
 	$app->post('/getPatient', function(){
-			});
+		$app = \Slim\Slim::getInstance();
+    	$response=array();
+    	$allPostVars = $app->request->post();
+    	array_walk_recursive($allPostVars, function (&$val) 
+		{ 
+		    $val = trim($val); 
+		});
+		$check_array = array('qrstring');
+		$check_diff=array_diff($check_array, array_keys($allPostVars));
+		if ($check_diff){
+		    $response["status"]=400;
+		    $notPresent= implode(", ", $check_diff);
+		    $response["message"]= $notPresent." not set";
+		    echo json_encode($response);
+		    return;
+		}
+		$sql = "SELECT * from patient where UserId =:qrstring";
+	    $dbdata=null;
+	    try {
+		    $db = getDB();
+		    $stmt = $db->prepare($sql);
+		    $result=$stmt->execute($allPostVars);
+			
+			if($result){
+				$response["status"]=200;
+				$response["message"]="correct qr string";
+				if($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+					foreach ($row as $key => $value) {
+		            	# code...
+		            	$response[$key]=$value;
+		            }
+		            unset($response["UserId"]);
+		            unset($response["Code"]);
+				}
+				else{
+					$response["status"]=400;
+					$response["message"]="incorrect qr string";
+				}
+				echo json_encode($response);
+			}
+			$db = null;
+		}
+		catch(PDOException $e) {
+	        $response["status"]=501;
+	        $response["message"]="Server Database Error ".$e->getMessage();
+	        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+	        //$
+	        echo json_encode($response);
+	    }
+	});
 	
 });
 
 $app->group('/doctor',function () use ($app){
 	//authC contains the details of user whose authentication hass been done using basicauth
 	global $authC; 
-	global $doctor;
+	
 	$app->options('/(:name+)', function() use ($app) {
     //...return correct headers...
     
