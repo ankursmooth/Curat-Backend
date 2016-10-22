@@ -195,6 +195,7 @@ $app->group('/patient',function () use ($app){
 	
 	$app->post('/getPatient', 'getPatient');
 	$app->post('/getHistory', 'getHistory');
+	$app->post('/detailHistory','detailHistory');
 	
 });
 
@@ -265,7 +266,7 @@ $app->group('/doctor',function () use ($app){
 	    }
 	});
 	$app->post('/getHistory','getHistory');
-//	$app->post('/detailHistory','detailHistory');
+	$app->post('/detailHistory','detailHistory');
 	$app->post('/getattachment',function(){
 		});
 	$app->post('/visit',function(){
@@ -338,6 +339,67 @@ function getHistory(){
     }
 }
 
+function detailHistory(){
+
+	$app = \Slim\Slim::getInstance();
+	$response=array();
+	$allPostVars = $app->request->post();
+	array_walk_recursive($allPostVars, function (&$val) 
+	{ 
+	    $val = trim($val); 
+	});
+	$check_array = array('patientID','DateTime');
+	$check_diff=array_diff($check_array, array_keys($allPostVars));
+	if ($check_diff){
+	    $response["status"]=400;
+	    $notPresent= implode(", ", $check_diff);
+	    $response["message"]= $notPresent." not set";
+	    echo json_encode($response);
+	    return;
+	}
+	$sql = "SELECT * from patienthistory where UserId =:patientID and DateTime =:DateTime";
+    $dbdata=null;
+    try {
+	    $db = getDB();
+	    $stmt = $db->prepare($sql);
+	    $result=$stmt->execute($allPostVars);
+		
+		if($result){
+			
+			
+			if($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+				
+				unset($row['UserId']);
+				
+	            foreach ($row as $key => $value) {
+	            	# code...
+	            	$response[$key]=$value;
+	            }
+	            $response["status"]=200;
+	        	$response["message"]="Specific Visits";
+			}
+			else{
+				$response["status"]=400;
+	        	$response["message"]="Not available";	
+			}
+	        
+	       	
+	       	
+	       	$db = null;
+	        echo json_encode($response);
+			
+		}
+		$db = null;
+	}
+	catch(PDOException $e) {
+        $response["status"]=501;
+        $response["message"]="Server Database Error ".$e->getMessage();
+        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+        //$
+        echo json_encode($response);
+    }
+
+}
 
 function getPatient(){
 	$app = \Slim\Slim::getInstance();
