@@ -359,6 +359,7 @@ function detailHistory(){
 	}
 	$sql = "SELECT * from patienthistory where UserId =:patientID and DateTime =:DateTime";
     $dbdata=null;
+    
     try {
 	    $db = getDB();
 	    $stmt = $db->prepare($sql);
