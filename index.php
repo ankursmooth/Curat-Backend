@@ -61,7 +61,7 @@ class MyAuthClass implements \Slim\Middleware\AuthCheckerInterface
 	        //echo '{"error":{"text":'. $e->getMessage() .'}}';
 	    }
     	if($dbdata!=null){
-    		$this->userId= $dbdata->id;
+    		$this->userId= $dbdata->email;
     		$this->userdata= $dbdata;
     		return true;
     	}
@@ -109,7 +109,7 @@ $app->add(new \Slim\Middleware\HttpBasicAuth($authA, array(
  */
 
 $app->post('/loginDoctor', function(){ 
-$app = \Slim\Slim::getInstance();
+	$app = \Slim\Slim::getInstance();
 	$response=array();
 	$allPostVars = $app->request->post();
 
@@ -206,7 +206,64 @@ $app->group('/doctor',function () use ($app){
     //...return correct headers...
     
 	});
-	
+	$app->post('/getPatient', 'getPatient');
+	$app->post('/addPatient', function(){
+		global $authC;
+		$app = \Slim\Slim::getInstance();
+		$response=array();
+		$allPostVars = $app->request->post();
+		array_walk_recursive($allPostVars, function (&$val) 
+		{ 
+		    $val = trim($val); 
+		});
+		$check_array = array('patientID');
+		$check_diff=array_diff($check_array, array_keys($allPostVars));
+		if ($check_diff){
+		    $response["status"]=400;
+		    $notPresent= implode(", ", $check_diff);
+		    $response["message"]= $notPresent." not set";
+		    echo json_encode($response);
+		    return;
+		}
+		$sql = "SELECT * from patient where UserId =:patientID";
+	    $dbdata=null;
+	    try {
+		    $db = getDB();
+		    $stmt = $db->prepare($sql);
+		    $result=$stmt->execute($allPostVars);
+			
+			if($result){
+				$result = NULL;
+				$db = getDB();
+			    $stmt = $db->prepare("REPLACE into doctorpatients (`doctoremail`,`patientuserid`) VALUES (:email,:patientID) ");
+			    $result=$stmt->execute(array('email' => $authC->userId, 'patientID' => $allPostVars['patientID']));
+			    if($result){
+			        $response["status"]=200;
+			        $response["message"]="Done";
+		       	}
+		       	else{
+		       		$response["status"]=501;
+			        $response["message"]="Server error";
+		       	}
+		       
+		       	$db = null;
+		        echo json_encode($response);
+				
+			}
+			else{
+				$response["status"]=400;
+			    $response["message"]="invalid patient ID";
+			}
+			$db = null;
+		}
+		catch(PDOException $e) {
+	        $response["status"]=501;
+	        $response["message"]="Server Database Error ".$e->getMessage();
+	        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+	        //$
+	        echo json_encode($response);
+	    }
+	});
 	$app->post('/getHistory','getHistory');
 //	$app->post('/detailHistory','detailHistory');
 	$app->post('/getattachment',function(){
