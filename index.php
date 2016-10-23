@@ -271,6 +271,7 @@ $app->group('/patient',function () use ($app){
 	
 	$app->post('/getPatient', 'getPatient');
 	$app->post('/getHistory', 'getHistory');
+	$app->post('/getHistoryDetail', 'getHistoryDetail');
 	$app->post('/detailHistory','detailHistory');
 	
 });
@@ -340,11 +341,11 @@ $app->group('/doctor',function () use ($app){
 	        //$
 	        echo json_encode($response);
 	    }
-	});
+		});
 	$app->get('/patientlist','patientlist');
 	$app->post('/getHistory','getHistory');
 	$app->post('/detailHistory','detailHistory');
-	
+	$app->post('/getHistoryDetail', 'getHistoryDetail');
 	$app->post('/visit',function(){
 		global $authC;
 		$app = \Slim\Slim::getInstance();
@@ -407,7 +408,7 @@ $app->group('/doctor',function () use ($app){
 	        //$
 	        echo json_encode($response);
 	    }
-	});
+		});
 	$app->post('/attachment',function(){
 		if (!isset($_FILES['image'])) {
 	        $response['status']=400;
@@ -475,12 +476,12 @@ $app->group('/doctor',function () use ($app){
         }
 
 		echo json_encode($response);
-	
 		});
 	});
 $app->group('/organization',function () use ($app){
 	$app->post('/getPatient', 'getPatient');
 	$app->post('/getHistory', 'getHistory');
+	$app->post('/getHistoryDetail', 'getHistoryDetail');
 	$app->post('/addPatient', function(){
 		global $authA;
 		$app = \Slim\Slim::getInstance();
@@ -704,6 +705,61 @@ function getPatient(){
 				$response["message"]="incorrect qr string";
 			}
 			echo json_encode($response);
+		}
+		$db = null;
+	}
+	catch(PDOException $e) {
+        $response["status"]=501;
+        $response["message"]="Server Database Error ".$e->getMessage();
+        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+        //$
+        echo json_encode($response);
+    }
+}
+
+
+function getHistoryDetail(){
+	$app = \Slim\Slim::getInstance();
+	$response=array();
+	$allPostVars = $app->request->post();
+	array_walk_recursive($allPostVars, function (&$val) 
+	{ 
+	    $val = trim($val); 
+	});
+	$check_array = array('qrstring');
+	$check_diff=array_diff($check_array, array_keys($allPostVars));
+	if ($check_diff){
+	    $response["status"]=400;
+	    $notPresent= implode(", ", $check_diff);
+	    $response["message"]= $notPresent." not set";
+	    echo json_encode($response);
+	    return;
+	}
+	$sql = "SELECT * from patienthistory where UserId =:qrstring";
+    $dbdata=null;
+    try {
+	    $db = getDB();
+	    $stmt = $db->prepare($sql);
+	    $result=$stmt->execute($allPostVars);
+		
+		if($result){
+			
+			$response["chat"]=array();
+		    $response["number"]=0;
+			while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+				$response["number"]=$response["number"]+1;
+				unset($row['UserId']);
+	            array_push($response["chat"], $row);
+			}
+	        $response["status"]=200;
+	        $response["message"]="All Visits";
+	       	
+	       	if($response["number"]==0){
+	       		$response["message"]="No Visits";
+	       	}
+	       	$db = null;
+	        echo json_encode($response);
+			
 		}
 		$db = null;
 	}
