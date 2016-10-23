@@ -60,6 +60,7 @@ class MyAuthClass implements \Slim\Middleware\AuthCheckerInterface
 	        return false;
 	        //echo '{"error":{"text":'. $e->getMessage() .'}}';
 	    }
+	   
     	if($dbdata!=null){
     		$this->userId= $dbdata->email;
     		$this->userdata= $dbdata;
@@ -100,7 +101,7 @@ $app->add(new \Slim\Middleware\HttpBasicAuth($authC, array(
     'realm' => 'Protected API' // optional, defaults to 'Protected Area'
 )));
 $app->add(new \Slim\Middleware\HttpBasicAuth($authA, array(
-    'path' => '/eg-api/organization', // optional, defaults to '/'
+    'path' => '/Curat-Backend/organization', // optional, defaults to '/'
     'realm' => 'Protected API' // optional, defaults to 'Protected Area'
 )));
 
@@ -184,7 +185,82 @@ $app->post('/loginDoctor', function(){
     }
 
 });
-$app->post('/loginOrganization', function(){ });
+$app->post('/loginOrganization', function(){  
+	$app = \Slim\Slim::getInstance();
+	$response=array();
+	$allPostVars = $app->request->post();
+
+	$check_array = array('email','password');
+	$check_diff=array_diff($check_array, array_keys($allPostVars));
+	if ($check_diff){
+	    $response["status"]=400;
+	    $notPresent= implode(", ", $check_diff);
+	    $response["message"]= $notPresent." not set";
+	    echo json_encode($response);
+	    return;
+	}
+	$allPostVars['password'] = sha1($allPostVars['password']);
+	array_walk_recursive($allPostVars, function (&$val) 
+	{ 
+	    $val = trim($val); 
+	});
+	$sql = "SELECT * from organization where email=:email and password =:password";
+    $dbdata=null;
+    try {
+	    $db = getDB();
+	    $stmt = $db->prepare($sql);
+	    $result=$stmt->execute($allPostVars);
+		
+		if($result){
+			
+			$response["organization"]=array();
+			$response["patients"]=array();
+		    $response["Pnumber"]=0;
+			if($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+				$sql2 = "SELECT patientuserid as uid from organizationpatients where orgemail=:email ";
+				unset($row['password']);
+	            array_push($response["organization"], $row);
+	            $db2 = getDB();
+	    		$stmt2 = $db2->prepare($sql2);
+	    		$result2=$stmt2->execute(array ('email' => $allPostVars['email']));
+				if($result2){
+					while ($row2 = $stmt2->fetch(PDO::FETCH_ASSOC)) {
+						$sql3 = "SELECT * from patient where UserId =:patientuserid";
+						$db3 = getDB();
+			    		$stmt3 = $db3->prepare($sql3);
+			    		$result3=$stmt3->execute(array ('patientuserid' => $row2['uid']));
+			    		if($result3){
+			    			if($row3 = $stmt3->fetch(PDO::FETCH_ASSOC)){
+			    				unset($row3['Code']);
+			    				array_push($response["patients"],$row3);
+			    				$response["Pnumber"] = $response["Pnumber"] +1;
+			    			}
+			    		}
+						
+					}
+				}
+	            $response["status"]=200;
+	        	$response["message"]="Success";
+			}
+	        else{
+	        	$response["status"]=404;
+	        	$response["message"]="Invalid Credentials";
+	        }
+	       	$db = null;
+	        echo json_encode($response);
+			
+		}
+		$db = null;
+	}
+	catch(PDOException $e) {
+        $response["status"]=501;
+        $response["message"]="Server Database Error ".$e->getMessage();
+        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+        //$
+        echo json_encode($response);
+    }
+
+});
 
 
 
@@ -265,10 +341,10 @@ $app->group('/doctor',function () use ($app){
 	        echo json_encode($response);
 	    }
 	});
+	$app->get('/patientlist','patientlist');
 	$app->post('/getHistory','getHistory');
 	$app->post('/detailHistory','detailHistory');
-	$app->post('/getattachment',function(){
-		});
+	
 	$app->post('/visit',function(){
 		global $authC;
 		$app = \Slim\Slim::getInstance();
@@ -405,6 +481,64 @@ $app->group('/doctor',function () use ($app){
 $app->group('/organization',function () use ($app){
 	$app->post('/getPatient', 'getPatient');
 	$app->post('/getHistory', 'getHistory');
+	$app->post('/addPatient', function(){
+		global $authA;
+		$app = \Slim\Slim::getInstance();
+		$response=array();
+		$allPostVars = $app->request->post();
+		array_walk_recursive($allPostVars, function (&$val) 
+		{ 
+		    $val = trim($val); 
+		});
+		$check_array = array('patientID');
+		$check_diff=array_diff($check_array, array_keys($allPostVars));
+		if ($check_diff){
+		    $response["status"]=400;
+		    $notPresent= implode(", ", $check_diff);
+		    $response["message"]= $notPresent." not set";
+		    echo json_encode($response);
+		    return;
+		}
+		$sql = "SELECT * from patient where UserId =:patientID";
+	    $dbdata=null;
+	    try {
+		    $db = getDB();
+		    $stmt = $db->prepare($sql);
+		    $result=$stmt->execute($allPostVars);
+		    
+			if($result){
+				$result = NULL;
+				$db = getDB();
+			    $stmt = $db->prepare("REPLACE into organizationpatients (`orgemail`,`patientuserid`) VALUES (:email,:patientID) ");
+			    $result=$stmt->execute(array('email' => $authA->userId, 'patientID' => $allPostVars['patientID']));
+			    if($result){
+			        $response["status"]=200;
+			        $response["message"]="Done";
+		       	}
+		       	else{
+		       		$response["status"]=501;
+			        $response["message"]="Server error";
+		       	}
+		       
+		       	$db = null;
+		        echo json_encode($response);
+				
+			}
+			else{
+				$response["status"]=400;
+			    $response["message"]="invalid patient ID";
+			}
+			$db = null;
+		}
+		catch(PDOException $e) {
+	        $response["status"]=501;
+	        $response["message"]="Server Database Error ".$e->getMessage();
+	        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+	        //$
+	        echo json_encode($response);
+	    }
+	});
+	$app->get('/patientlist','patientlist');
 } );
 
 $app->notFound(function () use ($app) {
@@ -582,6 +716,71 @@ function getPatient(){
     }
 }
 
+function patientlist(){
+	$app = \Slim\Slim::getInstance();
+	$response=array();
+	$authvar=null;
+	global $authC;
+	global $authA;
+	if($authC->userId!=-1){
+		$authvar=$authC;
+		$sql = "SELECT patientuserid as uid FROM `doctorpatients` WHERE `doctoremail`=:email ";
+	}
+	else{
+		$authvar=$authA;
+		$sql = "SELECT patientuserid as uid FROM `organizationpatients` WHERE `orgemail`=:email ";
+	}
+	$allPostVars=array();
+
+	$allPostVars['email']=$authvar->userId;
+	try {
+	    $db = getDB();
+	    $stmt = $db->prepare($sql);
+	    $result=$stmt->execute($allPostVars);
+		
+		$response["patients"]=array();
+		$response["Pnumber"]=0; 
+		
+		if($result){
+			while ($row2 = $stmt->fetch(PDO::FETCH_ASSOC)) {
+				$sql3 = "SELECT * from patient where UserId =:patientuserid";
+				$db3 = getDB();
+	    		$stmt3 = $db3->prepare($sql3);
+	    		$result3=$stmt3->execute(array ('patientuserid' => $row2['uid']));
+	    		if($result3){
+	    			if($row3 = $stmt3->fetch(PDO::FETCH_ASSOC)){
+	    				unset($row3['Code']);
+	    				array_push($response["patients"],$row3);
+	    				$response["Pnumber"] = $response["Pnumber"] +1;
+	    			}
+	    		}
+				
+			}	
+		}
+		else{
+			$response["status"]=400;
+			$response["message"]="details not match with db";
+			echo json_encode($response);
+        	return;
+		}
+		$response["status"]=200;
+		$response["message"]="done";
+        
+        
+       	
+       	$db = null;
+        echo json_encode($response);
+        return;
+	}
+	catch(PDOException $e) {
+        $response["status"]=501;
+        $response["message"]="Server Database Error ";
+        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+        //$e->getMessage()
+        echo json_encode($response);
+    }
+
+}
 /**
  * Step 4: Run the Slim application
  *
