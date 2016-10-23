@@ -477,6 +477,75 @@ $app->group('/doctor',function () use ($app){
 
 		echo json_encode($response);
 		});
+	$app->post('/visitattach',function(){
+		
+		global $authC;
+		$app = \Slim\Slim::getInstance();
+		$response=array();
+		$allPostVars = $app->request->post();
+		array_walk_recursive($allPostVars, function (&$val) 
+		{ 
+		    $val = trim($val); 
+		});
+		$check_array = array('patientID','Keypoints', 'Details','image');
+		$check_diff=array_diff($check_array, array_keys($allPostVars));
+		if ($check_diff){
+		    $response["status"]=400;
+		    $notPresent= implode(", ", $check_diff);
+		    $response["message"]= $notPresent." not set";
+		    echo json_encode($response);
+		    return;
+		}
+		$image = $allPostVars['image'];
+		unset($allPostVars['image']);
+		$sql = "SELECT * from patient where UserId =:patientID";
+	    $dbdata=null;
+	    try {
+		    $db = getDB();
+		    $stmt = $db->prepare($sql);
+		    $result=$stmt->execute(array('patientID' => $allPostVars['patientID']));
+
+			if($result){
+				$result = NULL;
+				$db = getDB();
+				$original = new DateTime("now", new DateTimeZone('UTC')	);
+				$timezoneName = timezone_name_from_abbr("", 5.5*3600, false);
+				$modified = $original->setTimezone(new DateTimezone($timezoneName));
+				
+				$dt = $original->format('Y-m-d H:i:s');
+				$name = md5($allPostVars['patientID'].$dt);
+				$path = 'attachments/' . $name.".jpg";
+				file_put_contents($path,base64_decode($image));
+			    $stmt = $db->prepare("INSERT into patienthistory (`UserId`,`DoctorName`, `Keypoints`, `Details`, `DateTime`,`HasAttachments`,`Attachments`) VALUES (:patientID,:DoctorName, :Keypoints, :Details, :dt, :HasAttachments, :Attachments) ");
+			    $result=$stmt->execute(array('DoctorName' => $authC->userdata->Name, 'patientID' => $allPostVars['patientID'], 'Keypoints' => $allPostVars['Keypoints'], 'Details' => $allPostVars['Details'], 'dt'=> $dt,'HasAttachments' => '1', 'Attachments' => $path ));
+			    if($result){
+			        $response["status"]=200;
+			        $response["message"]="Done";
+			        $response["DateTime"] = $dt;
+		       	}
+		       	else{
+		       		$response["status"]=501;
+			        $response["message"]="Server error";
+		       	}
+		       
+		       	$db = null;
+		        echo json_encode($response);
+				
+			}
+			else{
+				$response["status"]=400;
+			    $response["message"]="invalid patient ID";
+			}
+			$db = null;
+		}
+		catch(PDOException $e) {
+	        $response["status"]=501;
+	        $response["message"]="Server Database Error ".$e->getMessage();
+	        $response["usermessage"]="Oops! Our elves are working to fix the issue.";
+	        //$
+	        echo json_encode($response);
+	    }
+	});
 	});
 $app->group('/organization',function () use ($app){
 	$app->post('/getPatient', 'getPatient');
